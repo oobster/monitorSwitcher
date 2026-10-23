@@ -12,6 +12,8 @@ INSTALL – AND AGAIN WHENEVER THE MONITOR, A CABLE, AN INPUT OR THE SERVER CHAN
   2) Open Terminal, type "zsh " (with a space), drag setup.command into the window, press Enter.
   3) Setup lists the displays it found. Pick the MAIN one (stays with this Mac) and the one
      that MAY be switched; all others are protected. Enter accepts the [suggestion].
+     To detect the laptops' input: connect a laptop, switch the monitor to it with the monitor's
+     own buttons and press Enter – setup reads the input and switches back to this Mac as a test.
   4) Setup installs the app (menu bar icon, ⌃⌥⌘M), builds
      dist/MonitorSwitcher-client-X.Y.Z.zip (shown in Finder) and publishes it for updates.
 

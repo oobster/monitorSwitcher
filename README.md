@@ -19,7 +19,9 @@ Version: see [`VERSION`](VERSION) · changes: [`CHANGELOG.md`](CHANGELOG.md) · 
 - **Server:** Apple Silicon Mac, macOS 13+, [Homebrew](https://brew.sh) and `m1ddc`
   (`brew install m1ddc`), Remote Login (SSH) turned on.
   The built-in HDMI port of M1 and entry-level M2 Macs does not support DDC – use USB-C/Thunderbolt.
-- **Monitor:** DDC/CI support (most desktop monitors), with the server and the laptops on different inputs.
+- **Monitor:** DDC/CI support (most desktop monitors; DDC/CI may have to be turned on in its menu),
+  with the server and the laptops on different inputs – any of them: HDMI, DisplayPort, USB-C,
+  DVI, VGA … Monitors that need alternate addressing (e.g. LG) are detected automatically.
 - **Laptops:** any Mac with macOS 13+ (Apple Silicon or Intel), on the same local network as the server.
 
 ## How it works
@@ -63,12 +65,20 @@ Setup:
 1. lists every display it finds, with its current input, and marks the one with the menu bar;
 2. asks which display is the **main** one (stays with the server) and which one **may be switched**
    (shared); all others are **protected**; shows a summary and asks for confirmation;
-3. reads the server's input from the shared monitor, asks for the laptops' input and the menu names;
+3. reads the server's input from the shared monitor and **detects the laptops' input**: connect a
+   laptop, switch the monitor to it with the monitor's buttons and press Enter. Setup reads the
+   input, switches the monitor back over DDC as a test and picks the addressing that works
+   (standard, or alternate as on LG monitors). You can also type the input code instead;
 4. writes this Mac's own SSH address (`user@computer-name.local`) – a new server writes its own;
 5. saves `~/.config/monitor-switch/config`, installs the app and builds a **separate client package**
    `dist/MonitorSwitcher-client-<version>.zip` with the same settings, and publishes it for updates.
 
-Press Enter to accept a suggestion in `[brackets]`; `zsh setup.command --yes` accepts all of them.
+Press Enter to accept a suggestion in `[brackets]`; `zsh setup.command --yes` accepts all of them
+(no detection). Options: `--server-input CODE`, `--client-input CODE`, `--input-alt`, `--help`.
+
+Common input codes: 15 DisplayPort 1 · 16 DisplayPort 2 · 17 HDMI 1 · 18 HDMI 2 · 27 USB-C ·
+3 DVI 1 · 1 VGA 1. If a monitor can't report its current input, Monitor Switcher still switches
+but can't verify the switch.
 Run setup again whenever the monitor, a cable, an input or the server changes.
 
 ### 2. Laptops

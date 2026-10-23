@@ -3,6 +3,17 @@
 All notable changes to Monitor Switcher. Versions follow [Semantic Versioning](https://semver.org/):
 `MAJOR.MINOR.PATCH`. The current version is in the `VERSION` file.
 
+## [3.1.0] – 2026-10-23
+
+### Added
+- **Detect the laptops' input** in `setup.command`: switch the monitor to a laptop with its buttons,
+  setup reads the input and switches back over DDC as a test – no need to know input codes.
+- **Alternate addressing** (`input-alt`, e.g. LG monitors): chosen automatically when the standard
+  switch does not work in that test; `--input-alt` forces it.
+- Names for all standard DDC inputs (VGA, DVI, Composite, S-Video, Component, DisplayPort, HDMI, USB-C)
+  and for the alternate codes.
+- Monitors that can't report their current input are supported (switching without read-back).
+
 ## [3.0.0] – 2026-10-23
 
 First public release.

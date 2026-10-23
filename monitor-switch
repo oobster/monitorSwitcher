@@ -21,6 +21,13 @@ CONFIG="$HOME/.config/monitor-switch/config"
 if [[ -z "$MONITOR_UUID$MONITOR_NAME" || -z "$SERVER_INPUT" || -z "$CLIENT_INPUT" ]]; then
   print -u2 'Not set up yet. On the server, run: zsh setup.command'; exit 1
 fi
+# INPUT_CMD: "input" (standard DDC, most monitors) or "input-alt" (alternate addressing, e.g. LG).
+# *_INPUT is the value we set; *_READ is what the monitor reports back when read (often the same,
+# different with input-alt; empty = the monitor can't report its input, so there is no read-back).
+INPUT_CMD="${INPUT_CMD:-input}"
+[[ "$INPUT_CMD" == (input|input-alt) ]] || { print -u2 "Invalid INPUT_CMD '$INPUT_CMD' in $CONFIG"; exit 1; }
+SERVER_READ="${SERVER_READ-$SERVER_INPUT}"
+CLIENT_READ="${CLIENT_READ-$CLIENT_INPUT}"
 MINI=$SERVER_INPUT
 MACBOOK=$CLIENT_INPUT
 PROTECTED_UUIDS="${PROTECTED_UUIDS:-}"   # displays that must never be switched (setup.command)
@@ -75,11 +82,10 @@ current() {
   local uuid code
   uuid="$(monitor_uuid)"
   [[ -n "$uuid" ]] && code="$(read_input "$uuid")"
-  case "${code:-}" in
-    $MINI)    print mini ;;
-    $MACBOOK) print macbook ;;
-    *) [[ -r "$STATE_FILE" ]] && /bin/cat "$STATE_FILE" || print unknown ;;
-  esac
+  if   [[ -n "${code:-}" && "$code" == "$SERVER_READ" ]]; then print mini
+  elif [[ -n "${code:-}" && "$code" == "$CLIENT_READ" ]]; then print macbook
+  elif [[ -r "$STATE_FILE" ]]; then /bin/cat "$STATE_FILE"
+  else print unknown; fi
 }
 
 TARGET="${1:-toggle}"
@@ -90,8 +96,8 @@ case "$TARGET" in
 esac
 
 case "$TARGET" in
-  mini)    CODE=$MINI ;;
-  macbook) CODE=$MACBOOK ;;
+  mini)    CODE=$MINI;    CODE_READ=$SERVER_READ ;;
+  macbook) CODE=$MACBOOK; CODE_READ=$CLIENT_READ ;;
   *) print -u2 'Usage: monitor-switch toggle|server|client|status'; exit 2 ;;
 esac
 
@@ -114,7 +120,16 @@ if [[ -s "$LOG" ]]; then
   /usr/bin/awk -v c="$CUTOFF" 'substr($0, 1, 19) >= c' "$LOG" > "$LOG.$$" && /bin/mv "$LOG.$$" "$LOG"
 fi
 
-log "request: $TARGET (input $CODE)${SSH_CONNECTION:+ via ssh from ${SSH_CONNECTION%% *}}"
+log "request: $TARGET ($INPUT_CMD $CODE)${SSH_CONNECTION:+ via ssh from ${SSH_CONNECTION%% *}}"
+
+# Monitor can't report its input: send once, without read-back.
+if [[ -z "$CODE_READ" ]]; then
+  UUID="$(wait_for_monitor)" || die "$MONITOR_NAME is not visible (waited ${WAIT_SECONDS}s)."
+  guard "$UUID"
+  "$M1DDC" display "$UUID" set "$INPUT_CMD" "$CODE" >/dev/null 2>&1 || die "m1ddc could not set $INPUT_CMD $CODE."
+  log "sent: $INPUT_CMD $CODE (no read-back)"
+  save "$TARGET"; print "$TARGET"; exit 0
+fi
 deadline=$(( SECONDS + WAIT_SECONDS ))
 GRACE=6        # seconds to let the monitor act on a command before re-sending
 sent=0
@@ -122,19 +137,20 @@ last_sent=-100
 while true; do
   UUID="$(wait_for_monitor)" || die "$MONITOR_NAME is not visible (waited ${WAIT_SECONDS}s)."
   NOW="$(read_input "$UUID")"
-  if [[ "$NOW" == "$CODE" ]]; then
+  if [[ "$NOW" == "$CODE_READ" ]]; then
     log "ok: input $CODE (commands sent: $sent)"
     save "$TARGET"; print "$TARGET"; exit 0
   fi
-  # Readings:  wrong HDMI input (17/18)  -> the monitor ignored us (often the first command
+  # Readings:  the other computer's input -> the monitor ignored us (often the first command
   #            after power save just wakes it): send again, but at most every GRACE seconds,
   #            because each command restarts the switch and the screen blinks.
-  #            anything else (115, empty)  -> mid-switch or waking up: wait.
-  if (( sent == 0 )) || { [[ "$NOW" == ($MINI|$MACBOOK) ]] && (( SECONDS - last_sent >= GRACE )); }; then
+  #            anything else (e.g. 115, empty) -> mid-switch or waking up: wait.
+  if (( sent == 0 )) || { [[ -n "$NOW" && ( "$NOW" == "$SERVER_READ" || "$NOW" == "$CLIENT_READ" ) ]] \
+                          && (( SECONDS - last_sent >= GRACE )); }; then
     sent=$(( sent + 1 )); last_sent=$SECONDS
     log "send $sent: input is '${NOW:-?}', setting $CODE on $UUID"
     guard "$UUID"
-  "$M1DDC" display "$UUID" set input "$CODE" >/dev/null 2>&1
+    "$M1DDC" display "$UUID" set "$INPUT_CMD" "$CODE" >/dev/null 2>&1
   else
     log "waiting: input is '${NOW:-?}'"
   fi

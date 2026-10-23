@@ -6,20 +6,22 @@
 #
 #   zsh setup.command          interactive (Enter accepts the suggestion in [brackets])
 #   zsh setup.command --yes    accept all suggestions (e.g. re-run with the same monitors)
-#   options: --main N  --shared N  --server-input CODE  --client-input CODE  --host user@host
+#   options: --main N  --shared N  --server-input CODE  --client-input CODE  --input-alt
+#            --host user@host   (CODE = standard DDC input code, see the list setup prints)
 set -euo pipefail
 cd -- "$(dirname "$0")"
 
-YES=0; OPT_MAIN=''; OPT_SHARED=''; OPT_SERVER=''; OPT_CLIENT=''; OPT_HOST=''
+YES=0; OPT_MAIN=''; OPT_SHARED=''; OPT_SERVER=''; OPT_CLIENT=''; OPT_HOST=''; OPT_ALT=0
 while (( $# )); do
   case "$1" in
     --yes|-y)       YES=1 ;;
+    --input-alt)    OPT_ALT=1 ;;
     --main)         OPT_MAIN="$2"; shift ;;
     --shared)       OPT_SHARED="$2"; shift ;;
     --server-input) OPT_SERVER="$2"; shift ;;
     --client-input) OPT_CLIENT="$2"; shift ;;
     --host)         OPT_HOST="$2"; shift ;;
-    -h|--help)      /usr/bin/sed -n '2,8p' "$0"; exit 0 ;;
+    -h|--help)      /usr/bin/sed -n '2,10p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1 (see --help)"; exit 2 ;;
   esac
   shift
@@ -34,14 +36,27 @@ ask() {   # ask "question" "suggestion"  -> $REPLY
   return 0
 }
 
+# Standard DDC/CI (MCCS) input codes, as monitors report them; 27 is the usual USB-C code.
 input_name() {
   case "$1" in
-    15) print 'DisplayPort 1' ;; 16) print 'DisplayPort 2' ;;
-    17) print 'HDMI 1' ;;        18) print 'HDMI 2' ;;
-    27) print 'USB-C' ;;         *)  print "input $1" ;;
+    1) print 'VGA 1' ;;           2) print 'VGA 2' ;;           3) print 'DVI 1' ;;
+    4) print 'DVI 2' ;;           5) print 'Composite 1' ;;     6) print 'Composite 2' ;;
+    7) print 'S-Video 1' ;;       8) print 'S-Video 2' ;;       9) print 'Tuner 1' ;;
+    10) print 'Tuner 2' ;;        11) print 'Tuner 3' ;;        12) print 'Component 1' ;;
+    13) print 'Component 2' ;;    14) print 'Component 3' ;;    15) print 'DisplayPort 1' ;;
+    16) print 'DisplayPort 2' ;;  17) print 'HDMI 1' ;;         18) print 'HDMI 2' ;;
+    27) print 'USB-C' ;;
+    # alternate addressing (input-alt, e.g. LG)
+    144) print 'HDMI 1' ;;        145) print 'HDMI 2' ;;        208) print 'DisplayPort 1' ;;
+    209) print 'DisplayPort 2' ;; 210) print 'USB-C / DisplayPort 3' ;;
+    *) print "input $1" ;;
   esac
 }
-INPUTS_HELP='15 = DisplayPort 1, 16 = DisplayPort 2, 17 = HDMI 1, 18 = HDMI 2, 27 = USB-C'
+# Standard code -> code for alternate addressing (input-alt), where known.
+to_alt() {
+  case "$1" in 15) print 208 ;; 16) print 209 ;; 17) print 144 ;; 18) print 145 ;; 27) print 210 ;; *) print "$1" ;; esac
+}
+INPUTS_HELP='15 DisplayPort 1 · 16 DisplayPort 2 · 17 HDMI 1 · 18 HDMI 2 · 27 USB-C · 3 DVI 1 · 1 VGA 1'
 
 # --- Requirements ------------------------------------------------------------------------
 if   [[ -x /opt/homebrew/bin/m1ddc ]]; then M1DDC=/opt/homebrew/bin/m1ddc
@@ -60,6 +75,7 @@ fi
 CONFIG="$CONFIG_DIR/config"
 MONITOR_NAME=''; MONITOR_UUID=''; SERVER_INPUT=''; CLIENT_INPUT=''
 SERVER_LABEL=''; CLIENT_LABEL=''; SSH_HOST=''; MAIN_UUID=''; PROTECTED_UUIDS=''
+INPUT_CMD=''; SERVER_READ=''; CLIENT_READ=''
 [[ -r "$CONFIG" ]] && source "$CONFIG"
 PREV_NAME="$MONITOR_NAME"
 
@@ -145,25 +161,93 @@ protected=()
 for i in {1..$n}; do (( i != shared_i )) && protected+=("$uuids[i]"); done
 
 # --- Inputs ------------------------------------------------------------------------------
-CUR="$("$M1DDC" display "$SHARED_UUID" get input 2>/dev/null | /usr/bin/tr -dc '0-9' || true)"
-[[ "$CUR" == <1-> ]] || CUR=''
-echo
-echo "Shared display: $SHARED_NAME – current input: ${CUR:-?}$([[ -n "$CUR" ]] && print " ($(input_name $CUR))")"
-echo "Inputs: $INPUTS_HELP"
+# Current input of the shared monitor as it reports it (empty: unknown or not visible right now).
+read_shared() {
+  local v
+  v="$("$M1DDC" display "$SHARED_UUID" get input 2>/dev/null | /usr/bin/tr -dc '0-9' || true)"
+  [[ "$v" == <1-> ]] && print -r -- "$v"
+  return 0
+}
 
-case "$CUR" in 15|16|17|18|27) def_server="$CUR" ;; *) def_server="${SERVER_INPUT:-17}" ;; esac
+# Switch the shared monitor to the server with "$1" (input|input-alt) value "$2" and check that it
+# then reports "$3". Sends at most twice (the first command may only wake the monitor).
+try_switch() {
+  local cmd=$1 val=$2 want=$3 t
+  for t in 1 2; do
+    "$M1DDC" display "$SHARED_UUID" set "$cmd" "$val" >/dev/null 2>&1 || true
+    for n_try in {1..8}; do sleep 1; [[ "$(read_shared)" == "$want" ]] && return 0; done
+  done
+  return 1
+}
+
+CUR="$(read_shared)"
+echo
+echo "Shared display: $SHARED_NAME – current input: ${CUR:-? (the monitor does not report it)}$([[ -n "$CUR" ]] && print " ($(input_name $CUR))")"
+echo "Common inputs: $INPUTS_HELP"
+
+def_server="${CUR:-${SERVER_READ:-${SERVER_INPUT:-17}}}"
 if [[ -n "$OPT_SERVER" ]]; then REPLY="$OPT_SERVER"
 else ask 'Which input is this server on? (the monitor should be showing this server now)' "$def_server"; fi
 [[ "$REPLY" == <1-> ]] || die "Invalid input '$REPLY'."
 SERVER_IN=$REPLY
 
-if [[ -n "$CLIENT_INPUT" && "$CLIENT_INPUT" != "$SERVER_IN" ]]; then def_client=$CLIENT_INPUT
+prev_client="${CLIENT_READ:-$CLIENT_INPUT}"
+if [[ -n "$prev_client" && "$prev_client" != "$SERVER_IN" ]]; then def_client=$prev_client
 elif (( SERVER_IN == 17 )); then def_client=18
 else def_client=17; fi
-if [[ -n "$OPT_CLIENT" ]]; then REPLY="$OPT_CLIENT"; else ask 'Which input are the laptops on?' "$def_client"; fi
+
+MODE="${INPUT_CMD:-input}"; (( OPT_ALT )) && MODE=input-alt
+TESTED=0
+if [[ -n "$OPT_CLIENT" ]]; then
+  REPLY="$OPT_CLIENT"
+elif (( YES )) || [[ -z "$CUR" ]]; then
+  ask 'Which input are the laptops on?' "$def_client"
+else
+  ask 'Laptops: press Enter to detect their input (recommended), or type its code' 'detect'
+fi
+
+if [[ "$REPLY" == detect ]]; then
+  echo
+  echo '  1) Connect a laptop to the shared monitor (laptop awake).'
+  echo "  2) With the monitor's own buttons, switch it to the laptop's input."
+  read -r "?  3) Press Enter here once the monitor shows the laptop … " || true
+  echo -n '  Reading the input'
+  REPLY=''
+  for n_try in {1..30}; do
+    v="$(read_shared)"
+    if [[ -n "$v" && "$v" != "$SERVER_IN" ]]; then REPLY=$v; break; fi
+    echo -n '.'; sleep 2
+  done
+  echo
+  if [[ -z "$REPLY" ]]; then
+    echo "  Could not read the laptop's input. Switch the monitor back to this server with its buttons."
+    ask 'Which input are the laptops on?' "$def_client"
+  else
+    echo "  Laptop input: $REPLY ($(input_name $REPLY))"
+    echo '  Switching the monitor back to this server over DDC (test) …'
+    if try_switch input "$SERVER_IN" "$SERVER_IN"; then
+      MODE=input; TESTED=1; echo '  ✓ Works (standard addressing).'
+    elif [[ "$(to_alt $SERVER_IN)" != "$SERVER_IN" ]] && try_switch input-alt "$(to_alt $SERVER_IN)" "$SERVER_IN"; then
+      MODE=input-alt; TESTED=1; echo '  ✓ Works with alternate addressing (input-alt, as on LG monitors).'
+    else
+      echo '  ✖ The monitor did not switch back. Check that DDC/CI is on in the monitor menu and that'
+      echo "    this Mac is not on the built-in HDMI port of an M1 / entry M2 Mac. Switch back with the buttons."
+      die 'DDC switching does not work with this monitor connection.'
+    fi
+  fi
+fi
 [[ "$REPLY" == <1-> ]] || die "Invalid input '$REPLY'."
 (( REPLY != SERVER_IN )) || die 'The laptops must be on a different input than the server.'
 CLIENT_IN=$REPLY
+
+# Values to set (alternate addressing uses its own codes) and to expect when reading back.
+if [[ "$MODE" == input-alt ]]; then
+  SERVER_SET="$(to_alt $SERVER_IN)"; CLIENT_SET="$(to_alt $CLIENT_IN)"
+else
+  SERVER_SET=$SERVER_IN; CLIENT_SET=$CLIENT_IN
+fi
+if [[ -n "$CUR" ]]; then SERVER_RD=$SERVER_IN; CLIENT_RD=$CLIENT_IN
+else SERVER_RD=''; CLIENT_RD=''; fi    # monitor can't report its input: no read-back
 
 # --- Names and address -------------------------------------------------------------------
 ask 'Name of this computer in the menu' "${SERVER_LABEL:-Server}";  S_LABEL="$REPLY"
@@ -180,8 +264,12 @@ cat > "$CONFIG" <<CONF
 # To change them, run again: zsh setup.command
 MONITOR_NAME=${(qq)SHARED_NAME}
 MONITOR_UUID=${(qq)SHARED_UUID}
-SERVER_INPUT=$SERVER_IN
-CLIENT_INPUT=$CLIENT_IN
+# Inputs: *_INPUT is the value that is set, *_READ the value the monitor reports (empty: none).
+INPUT_CMD=$MODE
+SERVER_INPUT=$SERVER_SET
+CLIENT_INPUT=$CLIENT_SET
+SERVER_READ=${(qq)SERVER_RD}
+CLIENT_READ=${(qq)CLIENT_RD}
 SERVER_INPUT_NAME=${(qq)$(input_name $SERVER_IN)}
 CLIENT_INPUT_NAME=${(qq)$(input_name $CLIENT_IN)}
 SERVER_LABEL=${(qq)S_LABEL}
@@ -200,6 +288,7 @@ echo "  Shared display : $SHARED_NAME ($SHARED_UUID)"
 echo "  Protected      : ${#protected} display(s), never switched"
 echo "  $S_LABEL : $(input_name $SERVER_IN) ($SERVER_IN)"
 echo "  $C_LABEL : $(input_name $CLIENT_IN) ($CLIENT_IN)"
+echo "  Addressing     : $MODE$([[ "$MODE" == input-alt ]] && print " (set $SERVER_SET / $CLIENT_SET)")$( (( TESTED )) && print ', tested')$([[ -z "$SERVER_RD" ]] && print ', no read-back')"
 echo "  SSH address    : $HOST"
 echo "  Saved to       : $CONFIG"
 echo
