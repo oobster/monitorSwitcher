@@ -1,0 +1,27 @@
+MONITOR SWITCHER – SERVER
+=========================
+The server is the Mac the shared monitor is connected to.
+Laptops ask it to switch the monitor over SSH on your local network.
+
+ONCE, ON THE SERVER
+  - Homebrew and m1ddc:  brew install m1ddc
+  - System Settings → General → Sharing → turn on "Remote Login"
+
+INSTALL – AND AGAIN WHENEVER THE MONITOR, A CABLE, AN INPUT OR THE SERVER CHANGES
+  1) Make sure the shared monitor is showing this Mac.
+  2) Open Terminal, type "zsh " (with a space), drag setup.command into the window, press Enter.
+  3) Setup lists the displays it found. Pick the MAIN one (stays with this Mac) and the one
+     that MAY be switched; all others are protected. Enter accepts the [suggestion].
+  4) Setup installs the app (menu bar icon, ⌃⌥⌘M), builds
+     dist/MonitorSwitcher-client-X.Y.Z.zip (shown in Finder) and publishes it for updates.
+
+LAPTOPS
+  5) New laptop: copy the client zip over (e.g. AirDrop), unzip it, run: zsh install.command
+     Laptop that already has Monitor Switcher: menu → Update from Server.
+  6) A new laptop prints its public key on first install (it is on the clipboard).
+     On this Mac: menu bar icon → Laptop Keys … → paste → Add.
+     The same window lists all laptops and lets you remove them.
+     A key can only switch the monitor. Keys stay valid when you run setup again.
+     (Without the app: ./authorize-key.sh "ssh-ed25519 AAAA...")
+
+What changed in each version: CHANGELOG.md

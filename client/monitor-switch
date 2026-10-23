@@ -1,0 +1,26 @@
+#!/bin/zsh
+# Monitor Switcher client: asks the server to switch the shared monitor over SSH.
+# Usage: monitor-switch toggle | server | client | status | release | version | package
+set -euo pipefail
+
+HOST='__HOST__'
+KEY="$HOME/.ssh/monitorswitch_ed25519"
+STATE_DIR="$HOME/.local/state/monitor-switch"
+
+SSH=(/usr/bin/ssh -i "$KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5
+     -o StrictHostKeyChecking=accept-new "$HOST")
+
+CMD="${1:-toggle}"
+case "$CMD" in
+  toggle|server|client|mini|macbook|status|release) ;;
+  version|package) exec "${SSH[@]}" "$CMD" ;;      # used by monitor-switch-update
+  *) print -u2 'Usage: monitor-switch toggle|server|client|status|release|version|package'; exit 2 ;;
+esac
+
+OUT="$("${SSH[@]}" "$CMD")"
+
+if [[ "$OUT" == (mini|macbook) ]]; then
+  /bin/mkdir -p "$STATE_DIR"
+  print -n "$OUT" > "$STATE_DIR/current"
+fi
+print "$OUT"

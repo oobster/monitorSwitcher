@@ -1,0 +1,21 @@
+#!/bin/zsh
+# SSH forced command (server): keys added with authorize-key.sh may only switch the shared monitor.
+set -eu
+CMD="${SSH_ORIGINAL_COMMAND:-toggle}"
+PKG_DIR="$HOME/.local/share/monitor-switch/client"   # client package published by setup.command
+case "$CMD" in
+  version)
+    # Version of the client package this server offers (for "Update from Server" on laptops).
+    [[ -r "$PKG_DIR/VERSION" ]] && /bin/cat "$PKG_DIR/VERSION" || print 0
+    exit 0 ;;
+  package)
+    [[ -r "$PKG_DIR/MonitorSwitcher-client.zip" ]] || { print -u2 'This server has not published a client package.'; exit 1; }
+    exec /bin/cat "$PKG_DIR/MonitorSwitcher-client.zip" ;;
+  release)
+    # Laptop is going to sleep / was unplugged: answer at once and switch in the background,
+    # so the laptop does not have to wait for the monitor (and its SSH session can close).
+    /usr/bin/nohup "$HOME/.local/bin/monitor-switch" mini </dev/null >/dev/null 2>&1 &!
+    print mini; exit 0 ;;
+  toggle|server|client|mini|macbook|status) exec "$HOME/.local/bin/monitor-switch" "$CMD" ;;
+  *) print -u2 'Allowed: toggle | server | client | status | release | version | package'; exit 2 ;;
+esac

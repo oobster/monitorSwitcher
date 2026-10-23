@@ -1,0 +1,53 @@
+#!/bin/zsh
+# Laptop: update Monitor Switcher from the server, only when asked ("Update from Server").
+#   monitor-switch-update            check and, if the server has a newer version, install it
+#   monitor-switch-update --check    only print "current X" or "update X -> Y"
+#   monitor-switch-update --download download and verify the package, don't install (test)
+# Exit codes: 0 = done / up to date, 3 = server not reachable, 1 = other error.
+set -euo pipefail
+
+APP="$HOME/Applications/MonitorSwitcher.app"
+WRAPPER="$HOME/.local/bin/monitor-switch"
+STATE_DIR="$HOME/.local/state/monitor-switch"
+LOG="$STATE_DIR/log"
+/bin/mkdir -p "$STATE_DIR"
+log() { print -r -- "$(/bin/date '+%F %T') update: $*" >> "$LOG"; }
+fail() { log "ERROR: $*"; print -u2 -- "$*"; exit 1; }
+
+# Is version $1 newer than $2? (x.y.z)
+newer() {
+  local -a a b; a=(${(s:.:)1}); b=(${(s:.:)2})
+  local i
+  for i in 1 2 3; do
+    (( ${a[i]:-0} > ${b[i]:-0} )) && return 0
+    (( ${a[i]:-0} < ${b[i]:-0} )) && return 1
+  done
+  return 1
+}
+
+HAVE="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist" 2>/dev/null || print 0)"
+if ! WANT="$("$WRAPPER" version 2>/dev/null)"; then
+  print -u2 'Server not reachable (or this laptop has no access).'; exit 3
+fi
+WANT="${WANT//[^0-9.]/}"
+[[ -n "$WANT" && "$WANT" != 0 ]] || fail 'The server has not published a package (run setup.command on the server).'
+
+if ! newer "$WANT" "$HAVE"; then print "current $HAVE"; exit 0; fi
+[[ "${1:-}" == --check ]] && { print "update $HAVE -> $WANT"; exit 0; }
+
+log "$HAVE -> $WANT: downloading"
+TMP="$(/usr/bin/mktemp -d)"
+trap '/bin/rm -rf "$TMP"' EXIT
+"$WRAPPER" package > "$TMP/package.zip" || fail 'Downloading the package from the server failed.'
+/usr/bin/ditto -x -k "$TMP/package.zip" "$TMP/x" || fail 'The package is damaged.'
+PKG="$TMP/x/MonitorSwitcher-client"
+[[ -r "$PKG/VERSION" && "$(/bin/cat "$PKG/VERSION")" == "$WANT" ]] || fail 'The package version does not match.'
+[[ -d "$PKG/MonitorSwitcher.app" && -r "$PKG/install.command" ]] || fail 'The package is incomplete.'
+/usr/bin/codesign -v "$PKG/MonitorSwitcher.app" 2>/dev/null || fail 'The app signature in the package is not valid.'
+
+if [[ "${1:-}" == --download ]]; then print "ok package $WANT"; exit 0; fi
+
+log "$HAVE -> $WANT: installing"
+/bin/zsh "$PKG/install.command" --update >/dev/null 2>>"$LOG" || fail 'Installation failed (see the log).'
+log "installed $WANT"
+print "installed $WANT"

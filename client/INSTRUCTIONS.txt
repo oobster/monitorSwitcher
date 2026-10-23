@@ -1,0 +1,22 @@
+MONITOR SWITCHER – LAPTOP
+=========================
+The shared monitor is switched by the server; this laptop asks it to switch over SSH.
+Both have to be on the same local network.
+
+INSTALL
+  1) Open Terminal (Cmd+Space, type Terminal).
+  2) Type "zsh " (with a space), drag install.command into the Terminal window, press Enter.
+  3) On first install it prints a public key (already on the clipboard). Send it to whoever
+     runs the server, who adds it there. The key can ONLY switch the monitor.
+
+USE – usually nothing to do
+  - plug in the shared monitor's cable (or wake this computer with it plugged in)
+      -> the monitor switches to this computer
+  - unplug it, close the lid or put this computer to sleep
+      -> the monitor goes back to the server
+  - by hand: ⌃⌥⌘M or the monitor icon in the menu bar
+  The app starts at every login.
+
+NEW VERSION
+  Menu bar icon → Update from Server (while on the server's network).
+  The installed version is shown at the bottom of the menu; changes are in CHANGELOG.md.

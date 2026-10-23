@@ -1,0 +1,143 @@
+#!/bin/zsh
+# Shared-monitor input switcher for Apple Silicon Macs (uses m1ddc). Runs on the server.
+# Switches the shared monitor between the server's input and the laptops' input.
+# Usage: monitor-switch toggle | server | client | status
+#   ("server"/"mini" = the server's input, "client"/"macbook" = the laptops' input;
+#    "mini"/"macbook" are the names used on the wire and in the state file)
+# Settings: ~/.config/monitor-switch/config, written by setup.command.
+#
+# Safety: the monitor is always addressed by its UUID (never by display number, never
+# without a display argument), so a command can only ever reach the shared monitor.
+# Robustness: a monitor with no signal goes into power save, ignores DDC and disconnects
+# for a while; we wait for it to come back and verify that the input really changed.
+set -uo pipefail
+
+MONITOR_NAME=''
+MONITOR_UUID=''
+SERVER_INPUT=''
+CLIENT_INPUT=''
+CONFIG="$HOME/.config/monitor-switch/config"
+[[ -r "$CONFIG" ]] && source "$CONFIG"
+if [[ -z "$MONITOR_UUID$MONITOR_NAME" || -z "$SERVER_INPUT" || -z "$CLIENT_INPUT" ]]; then
+  print -u2 'Not set up yet. On the server, run: zsh setup.command'; exit 1
+fi
+MINI=$SERVER_INPUT
+MACBOOK=$CLIENT_INPUT
+PROTECTED_UUIDS="${PROTECTED_UUIDS:-}"   # displays that must never be switched (setup.command)
+WAIT_SECONDS=30
+STATE_DIR="$HOME/.local/state/monitor-switch"
+STATE_FILE="$STATE_DIR/current"
+LOG="$STATE_DIR/log"
+/bin/mkdir -p "$STATE_DIR"
+
+log() { print -r -- "$(/bin/date '+%F %T') $*" >> "$LOG"; }
+
+die() { log "ERROR: $*"; print -u2 -- "$*"; exit 1; }
+
+if [[ -x /opt/homebrew/bin/m1ddc ]]; then
+  M1DDC=/opt/homebrew/bin/m1ddc
+elif [[ -x /usr/local/bin/m1ddc ]]; then
+  M1DDC=/usr/local/bin/m1ddc
+else
+  die 'm1ddc not installed. Run: brew install m1ddc'
+fi
+
+# UUID of the shared monitor from 'm1ddc display list', e.g. "[2] <name> (XXXXXXXX-XXXX-...)".
+# With MONITOR_UUID set (by setup.command) only that exact monitor matches, so even two
+# monitors of the same model can't be confused; otherwise it is looked up by name.
+monitor_uuid() {
+  "$M1DDC" display list 2>/dev/null | /usr/bin/awk -v name="$MONITOR_NAME" -v want="$MONITOR_UUID" '
+    match($0, /\([0-9A-Fa-f-]+\)$/) {
+      u = substr($0, RSTART+1, RLENGTH-2)
+      if ((want != "" && u == want) || (want == "" && index($0, name))) { print u; exit }
+    }'
+}
+
+# Wait (up to WAIT_SECONDS) until the shared monitor is visible; prints its UUID.
+wait_for_monitor() {
+  local uuid deadline=$(( SECONDS + WAIT_SECONDS ))
+  while true; do
+    uuid="$(monitor_uuid)"
+    [[ -n "$uuid" ]] && { print -r -- "$uuid"; return 0; }
+    (( SECONDS >= deadline )) && return 1
+    sleep 2
+  done
+}
+
+# Last line of defence: never touch a display the setup marked as protected.
+guard() { [[ " $PROTECTED_UUIDS " == *" $1 "* ]] && die "Display $1 is protected – not switching it (check setup.command)."; return 0; }
+
+read_input() { "$M1DDC" display "$1" get input 2>/dev/null | /usr/bin/tr -dc '0-9'; }
+
+save() { print -n "$1" > "$STATE_FILE"; }
+
+current() {
+  local uuid code
+  uuid="$(monitor_uuid)"
+  [[ -n "$uuid" ]] && code="$(read_input "$uuid")"
+  case "${code:-}" in
+    $MINI)    print mini ;;
+    $MACBOOK) print macbook ;;
+    *) [[ -r "$STATE_FILE" ]] && /bin/cat "$STATE_FILE" || print unknown ;;
+  esac
+}
+
+TARGET="${1:-toggle}"
+case "$TARGET" in server) TARGET=mini ;; client) TARGET=macbook ;; esac
+case "$TARGET" in
+  status) NOW="$(current)"; [[ "$NOW" != unknown ]] && save "$NOW"; print "$NOW"; exit 0 ;;
+  toggle) [[ "$(current)" == mini ]] && TARGET=macbook || TARGET=mini ;;
+esac
+
+case "$TARGET" in
+  mini)    CODE=$MINI ;;
+  macbook) CODE=$MACBOOK ;;
+  *) print -u2 'Usage: monitor-switch toggle|server|client|status'; exit 2 ;;
+esac
+
+# One switch at a time (e.g. hotkey pressed twice, or a laptop's background release followed
+# right away by a take-over): wait for the running switch to finish instead of failing.
+LOCK="$STATE_DIR/lock"
+lock_deadline=$(( SECONDS + WAIT_SECONDS + 15 ))
+until /bin/mkdir "$LOCK" 2>/dev/null; do
+  if [[ -n "$(/usr/bin/find "$LOCK" -maxdepth 0 -mmin +2 2>/dev/null)" ]]; then
+    /bin/rmdir "$LOCK" 2>/dev/null; continue          # stale lock (crashed run)
+  fi
+  (( SECONDS >= lock_deadline )) && die 'Another switch is still running.'
+  sleep 0.5
+done
+trap '/bin/rmdir "$LOCK" 2>/dev/null' EXIT
+
+# Keep only the last 24 hours of log (lines start with "YYYY-MM-DD HH:MM:SS").
+if [[ -s "$LOG" ]]; then
+  CUTOFF="$(/bin/date -v-1d '+%F %T')"
+  /usr/bin/awk -v c="$CUTOFF" 'substr($0, 1, 19) >= c' "$LOG" > "$LOG.$$" && /bin/mv "$LOG.$$" "$LOG"
+fi
+
+log "request: $TARGET (input $CODE)${SSH_CONNECTION:+ via ssh from ${SSH_CONNECTION%% *}}"
+deadline=$(( SECONDS + WAIT_SECONDS ))
+GRACE=6        # seconds to let the monitor act on a command before re-sending
+sent=0
+last_sent=-100
+while true; do
+  UUID="$(wait_for_monitor)" || die "$MONITOR_NAME is not visible (waited ${WAIT_SECONDS}s)."
+  NOW="$(read_input "$UUID")"
+  if [[ "$NOW" == "$CODE" ]]; then
+    log "ok: input $CODE (commands sent: $sent)"
+    save "$TARGET"; print "$TARGET"; exit 0
+  fi
+  # Readings:  wrong HDMI input (17/18)  -> the monitor ignored us (often the first command
+  #            after power save just wakes it): send again, but at most every GRACE seconds,
+  #            because each command restarts the switch and the screen blinks.
+  #            anything else (115, empty)  -> mid-switch or waking up: wait.
+  if (( sent == 0 )) || { [[ "$NOW" == ($MINI|$MACBOOK) ]] && (( SECONDS - last_sent >= GRACE )); }; then
+    sent=$(( sent + 1 )); last_sent=$SECONDS
+    log "send $sent: input is '${NOW:-?}', setting $CODE on $UUID"
+    guard "$UUID"
+  "$M1DDC" display "$UUID" set input "$CODE" >/dev/null 2>&1
+  else
+    log "waiting: input is '${NOW:-?}'"
+  fi
+  (( SECONDS >= deadline )) && die "$MONITOR_NAME did not switch to input $CODE (last reading: ${NOW:-?})."
+  sleep 3
+done
