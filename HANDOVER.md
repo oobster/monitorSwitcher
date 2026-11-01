@@ -22,10 +22,11 @@ Posledice: napake morajo biti jasno izpisane, prva namestitev laptopa še zahtev
 ## Trenutno stanje
 - Verzija v repozitoriju: `VERSION` (3.2.0 – podpis Developer ID + notarizacija, nov bundle ID
   `se.premakni.MonitorSwitcher`, skripte v `scripts/`, hitri testi).
-- Nameščeno doma (2026-11-01):
-  - strežnik (Mac mini): **3.1.0**; 3.2.0 še ni nameščena (čaka na potrditev).
+- Nameščeno doma:
+  - strežnik (Mac mini): **3.2.0** (tag `v3.2.0`, 2026-11-01; notariziran, Gatekeeper »Notarized Developer ID«);
+    objavljen tudi paket 3.2.0 za laptope.
   - laptopa: 3.1.0 prek »Update from Server« (potrjeno za vsaj enega, 2026-10-23); drugega preveri.
-- GitHub release: v3.0.0, v3.1.0 (strežniški zip kot priponka).
+- GitHub release: v3.0.0, v3.1.0 (strežniški zip kot priponka); v3.2.0 še ne (tag je na GitHubu).
 
 ## Kako
 | Kaj | Ukaz | Opomba |
@@ -53,10 +54,11 @@ Posledice: napake morajo biti jasno izpisane, prva namestitev laptopa še zahtev
 - Odločitve: `decisions/`; nauki: `LESSONS.md`.
 
 ## Odprto
-- **Namestitev 3.2.0 na Mac mini** (`scripts/deploy.sh`) – po lastnikovem »ja«; nato laptopa
-  »Update from Server«. Ob prvem zagonu 3.2.0 se samodejni zagon registrira znova; star vnos
-  `si.obal.monitorswitcher` v System Settings → General → Login Items lahko ostane – odstrani ročno.
-- Release v3.2.0 na GitHubu (priponka strežniški zip) po namestitvi.
+- Laptopa: »Update from Server« na 3.2.0 (nov bundle ID, prenos nastavitev ob namestitvi).
+- Star vnos za samodejni zagon (`si.obal.monitorswitcher`) je v System Settings → General → Login Items
+  še prisoten poleg novega – lahko se odstrani ročno.
+- Release v3.2.0 na GitHubu (priponka strežniški zip) – po lastnikovem dogovoru.
+- Prva notarizacija tega računa je trajala ~41 min (19:02–19:43 UTC); naslednje so običajno hitrejše.
 
 ## Odprta vprašanja za lastnika
 1. Jezik commit sporočil v javnem repozitoriju: `nacin-dela` pravi slovenščina, javni projekt je v
