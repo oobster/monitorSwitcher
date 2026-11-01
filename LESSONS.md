@@ -38,6 +38,6 @@
 
 ## 2026-10-23 – Javna objava in zgodovina
 - **Kaj se je zgodilo:** stara zgodovina je vsebovala uporabniško ime, ime računalnika, imena oseb in UUID-je.
-  Zgodovino smo zamenjali z enim začetnim commitom (3.0.0) in pobrisali stare tage (z Mihovim potrdilom).
+  Zgodovino smo zamenjali z enim začetnim commitom (3.0.0) in pobrisali stare tage (z lastnikovim potrdilom).
 - **Nauk:** projekt, ki bi lahko postal javen, naj od začetka nima osebnih podatkov v gitu (`private/`).
 - **Velja za:** vse projekte.
