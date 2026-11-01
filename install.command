@@ -11,9 +11,10 @@ if [[ ! -x /opt/homebrew/bin/m1ddc && ! -x /usr/local/bin/m1ddc ]]; then
   exit 1
 fi
 
+D=se.premakni.MonitorSwitcher   # bundle ID = settings domain
+
 # Pass the monitor settings (setup.command) on to the app.
 apply_settings() {
-  local D=si.obal.monitorswitcher
   /usr/bin/defaults write $D displayName     "$MONITOR_NAME"
   /usr/bin/defaults write $D serverLabel     "$SERVER_LABEL"
   /usr/bin/defaults write $D clientLabel     "$CLIENT_LABEL"
@@ -52,11 +53,19 @@ if [[ -d ./MonitorSwitcher.app ]]; then
   SRC_APP=./MonitorSwitcher.app                       # prebuilt (server package)
 else
   SRC_APP="$TMPD/MonitorSwitcher.app"                 # from source (git repo)
-  ./build-app.sh "$SRC_APP"
+  ./scripts/build-app.sh "$SRC_APP" --no-notarize   # same Mac: no notarization needed
 fi
 
 APP="$HOME/Applications/MonitorSwitcher.app"
 /usr/bin/pkill -x MonitorSwitcher 2>/dev/null || true
+sleep 0.5
+# --- Migrate settings from the earlier bundle ID (before 3.2) ----------------------------
+OLD_ID=si.obal.monitorswitcher
+if /usr/bin/defaults read $OLD_ID >/dev/null 2>&1; then
+  /usr/bin/defaults export $OLD_ID - | /usr/bin/defaults import $D -
+  /usr/bin/defaults delete $D didSetupLoginItem >/dev/null 2>&1 || true  # login item again, under the new ID
+  /usr/bin/defaults delete $OLD_ID >/dev/null 2>&1 || true
+fi
 /bin/rm -rf "$APP"
 /usr/bin/ditto "$SRC_APP" "$APP"
 /usr/bin/xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true

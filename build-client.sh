@@ -19,7 +19,7 @@ ZIP="MonitorSwitcher-client-$VERSION.zip"
 if [[ -d ./MonitorSwitcher.app ]]; then
   /usr/bin/ditto ./MonitorSwitcher.app "$OUT/MonitorSwitcher.app"     # prebuilt (server package)
 else
-  ./build-app.sh "$OUT/MonitorSwitcher.app"                        # from source (git repo)
+  ./scripts/build-app.sh "$OUT/MonitorSwitcher.app"                        # from source (git repo)
 fi
 /usr/bin/xattr -dr com.apple.quarantine "$OUT/MonitorSwitcher.app" 2>/dev/null || true
 

@@ -9,9 +9,20 @@ UPDATE=0; [[ "${1:-}" == --update ]] && UPDATE=1
 mkdir -p "$HOME/.local/bin" "$HOME/Applications" "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
 
+D=se.premakni.MonitorSwitcher   # bundle ID = settings domain
+/usr/bin/pkill -x MonitorSwitcher 2>/dev/null || true
+sleep 0.5
+
+# --- Migrate settings from the earlier bundle ID (before 3.2) ----------------------------
+OLD_ID=si.obal.monitorswitcher
+if /usr/bin/defaults read $OLD_ID >/dev/null 2>&1; then
+  /usr/bin/defaults export $OLD_ID - | /usr/bin/defaults import $D -
+  /usr/bin/defaults delete $D didSetupLoginItem >/dev/null 2>&1 || true  # login item again, under the new ID
+  /usr/bin/defaults delete $OLD_ID >/dev/null 2>&1 || true
+fi
+
 # --- Migrate a laptop install from before 2.0 (then called Dell Switcher) ----------------
 OLD_D=si.obal.dellswitcher
-D=si.obal.monitorswitcher
 /usr/bin/pkill -x DellSwitcher 2>/dev/null || true
 /bin/rm -rf "$HOME/Applications/DellSwitcher.app"
 /bin/rm -f "$HOME/.local/bin/dell-switch"

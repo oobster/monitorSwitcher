@@ -41,7 +41,9 @@ log() { print -r -- "$(/bin/date '+%F %T') $*" >> "$LOG"; }
 
 die() { log "ERROR: $*"; print -u2 -- "$*"; exit 1; }
 
-if [[ -x /opt/homebrew/bin/m1ddc ]]; then
+if [[ -n "${MONITOR_SWITCH_M1DDC:-}" ]]; then
+  M1DDC=$MONITOR_SWITCH_M1DDC            # tests (scripts/test.sh) use a fake m1ddc
+elif [[ -x /opt/homebrew/bin/m1ddc ]]; then
   M1DDC=/opt/homebrew/bin/m1ddc
 elif [[ -x /usr/local/bin/m1ddc ]]; then
   M1DDC=/usr/local/bin/m1ddc

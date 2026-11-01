@@ -3,6 +3,23 @@
 All notable changes to Monitor Switcher. Versions follow [Semantic Versioning](https://semver.org/):
 `MAJOR.MINOR.PATCH`. The current version is in the `VERSION` file.
 
+## [Unreleased]
+
+## [3.2.0] – 2026-11-01
+
+### Changed
+- Release builds are signed with a Developer ID (hardened runtime) and notarized, so the app opens on
+  any Mac without Gatekeeper warnings. Builds without that identity are still signed ad-hoc.
+- Bundle ID is now `se.premakni.MonitorSwitcher`. The installers move existing settings over
+  automatically; the launch-at-login item is registered again under the new ID.
+- Developer scripts moved to `scripts/`: `build.sh` (needs a clean tree, tags the version, keeps the
+  last two packages), `build-app.sh` (build, sign, notarize), `deploy.sh` (install on this Mac).
+
+### Added
+- `scripts/test.sh`: quick tests without a monitor – script syntax, Swift type check and the switching
+  logic against a fake `m1ddc` (switching, power save, protected displays, alternate addressing,
+  monitors without read-back).
+
 ## [3.1.0] – 2026-10-23
 
 ### Added

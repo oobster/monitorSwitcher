@@ -47,7 +47,7 @@ Version: see [`VERSION`](VERSION) · changes: [`CHANGELOG.md`](CHANGELOG.md) · 
 ## Install
 
 ```
-repository:  ./release.sh            →  dist/MonitorSwitcher-server-<version>.zip
+repository:  scripts/build.sh        →  dist/MonitorSwitcher-server-<version>.zip
 server:      zsh setup.command       →  installs the server + dist/MonitorSwitcher-client-<version>.zip
 laptop:      zsh install.command     (copy the client zip over, e.g. with AirDrop)
 ```
@@ -112,7 +112,8 @@ Both start at login (can be turned off in the menu); the version is shown at the
 
 ## Updates
 
-1. Build a new server package (`./release.sh`) and run `zsh setup.command --yes` from it on the server.
+1. Build a new server package (`scripts/build.sh`) and run `zsh setup.command --yes` from it on the server
+   (`scripts/deploy.sh` does that on the Mac you build on).
    It installs the server and publishes the new client package.
 2. On each laptop: menu → **Update from Server** (on the server's network). Nothing runs on its own,
    so a laptop away from home never waits for the server.
@@ -123,17 +124,25 @@ Changes to `monitor-switch` alone take effect for everyone as soon as the server
 
 ```sh
 xcode-select --install     # Swift compiler
-./release.sh               # → dist/MonitorSwitcher-server-<version>.zip
+scripts/test.sh            # quick tests: syntax, Swift type check, switching logic with a fake m1ddc
+scripts/build.sh           # → dist/MonitorSwitcher-server-<version>.zip (clean tree, creates tag v<version>)
+scripts/build.sh --dirty   # test build of uncommitted changes (no tag, not notarized)
+scripts/deploy.sh          # install the newest package on this Mac (server) and publish the laptop package
 ```
 
 In the repository you can also run `zsh setup.command` directly; without a bundled app it builds one.
-The app is ad-hoc signed, not notarized; the installers remove the quarantine flag from the app they install.
+
+Signing: when a *Developer ID Application* identity is in the keychain, the app is signed with it
+(hardened runtime) and notarized with the notarytool profile `AC_NOTARY`
+(`xcrun notarytool store-credentials AC_NOTARY …`), so it opens on any Mac without warnings.
+Without that identity it is signed ad-hoc, which is fine on the Mac that built it; the installers
+also remove the quarantine flag. Override with `SIGN_IDENTITY=…` and `NOTARY_PROFILE=…`.
 
 ### Release checklist
 
 1. Bump `VERSION` (`x.y.Z` fix, `x.Y.0` feature, `X.0.0` breaking) and add to `CHANGELOG.md`.
-2. `git commit`, `git tag v<version>`, `git push --follow-tags`.
-3. `./release.sh` and attach `dist/MonitorSwitcher-server-<version>.zip` to a GitHub release.
+2. `scripts/test.sh`, commit, then `scripts/build.sh` (creates the tag) and `git push --follow-tags`.
+3. Attach `dist/MonitorSwitcher-server-<version>.zip` to a GitHub release.
 
 ## Files
 
@@ -148,7 +157,10 @@ The app is ad-hoc signed, not notarized; the installers remove the quarantine fl
 | `client/*` | laptop | SSH wrapper, updater, installer, instructions |
 | `server/INSTRUCTIONS.txt` | server | short instructions inside the server package |
 | `MonitorSwitcher.swift` | both | the menu bar app (its role is set by the installer) |
-| `build-app.sh`, `release.sh` | repository | builds the app and the server package |
+| `scripts/build-app.sh` | repository | builds, signs and notarizes the app |
+| `scripts/build.sh` | repository | builds the server package and tags the version |
+| `scripts/test.sh` | repository | quick tests without a monitor |
+| `scripts/deploy.sh` | repository | installs the newest package on this Mac |
 
 Logs: `~/.local/state/monitor-switch/log` (last 24 hours).
 
