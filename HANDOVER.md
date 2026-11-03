@@ -1,6 +1,6 @@
 # Monitor Switcher – handover
 
-Zadnja posodobitev: 2026-11-01
+Zadnja posodobitev: 2026-11-03
 
 Repozitorij je **javen** (`oobster/monitorSwitcher`, Unlicense). V repozitorij ne gredo imena oseb,
 uporabniška imena, imena računalnikov, UUID-ji zaslonov, IP-ji ali ključi. Zasebno sodi v `private/`
@@ -59,6 +59,11 @@ Posledice: napake morajo biti jasno izpisane, prva namestitev laptopa še zahtev
   še prisoten poleg novega – lahko se odstrani ročno.
 - Release v3.2.0 na GitHubu (priponka strežniški zip) – po lastnikovem dogovoru.
 - Prva notarizacija tega računa je trajala ~41 min (19:02–19:43 UTC); naslednje so običajno hitrejše.
+- Popravki pregleda C1 (commit `3b367e4`, v CHANGELOG pod Unreleased): `authorize-key.sh` sprejme
+  natanko en ključ v eni vrstici; laptop prekliče zakasnjene poskuse prevzema ob odklopu/spanju,
+  release med tekočim preklopom se izvede za njim (`TakeoverSequencer`). **Testi še niso zagnani**
+  (po lastnikovem navodilu samo prevajanje): `scripts/test.sh`. Neodvisna preverba (Codex) čaka.
+  Verzija ni dvignjena, ni gradnje ne namestitve.
 
 ## Odprta vprašanja za lastnika
 1. Jezik commit sporočil v javnem repozitoriju: `nacin-dela` pravi slovenščina, javni projekt je v
@@ -66,3 +71,6 @@ Posledice: napake morajo biti jasno izpisane, prva namestitev laptopa še zahtev
 2. Prva namestitev laptopa brez Terminala (npr. notariziran `.pkg` ali app, ki se ob prvem zagonu
    namesti sam)?
 3. `m1ddc` je zdaj odvisen od Homebrewa; ga zapakirava v app (MIT licenca to dovoli)?
+4. C1 izbire: `authorize-key.sh` zavrne tudi argument s končnim prelomom vrstice (strogo »ena
+   vrstica«); poskusi prevzema se prekličejo tudi ob kratkem utripu zaslona (pomembno le, če
+   poskus med utripom spodleti). Ustreza?
