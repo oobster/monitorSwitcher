@@ -1,6 +1,6 @@
 # Monitor Switcher – handover
 
-Zadnja posodobitev: 2026-11-03
+Zadnja posodobitev: 2026-11-04
 
 Repozitorij je **javen** (`oobster/monitorSwitcher`, Unlicense). V repozitorij ne gredo imena oseb,
 uporabniška imena, imena računalnikov, UUID-ji zaslonov, IP-ji ali ključi. Zasebno sodi v `private/`
@@ -61,9 +61,9 @@ Posledice: napake morajo biti jasno izpisane, prva namestitev laptopa še zahtev
 - Prva notarizacija tega računa je trajala ~41 min (19:02–19:43 UTC); naslednje so običajno hitrejše.
 - Popravki pregleda C1 (commit `3b367e4`, v CHANGELOG pod Unreleased): `authorize-key.sh` sprejme
   natanko en ključ v eni vrstici; laptop prekliče zakasnjene poskuse prevzema ob odklopu/spanju,
-  release med tekočim preklopom se izvede za njim (`TakeoverSequencer`). **Testi še niso zagnani**
-  (po lastnikovem navodilu samo prevajanje): `scripts/test.sh`. Neodvisna preverba (Codex) čaka.
-  Verzija ni dvignjena, ni gradnje ne namestitve.
+  release med tekočim preklopom se izvede za njim (`TakeoverSequencer`). **Ciljni testi C1 zeleni
+  (38/0)**: `scripts/test.sh`, 2026-11-04. Neodvisna preverba (Codex) čaka.
+  Verzija ni dvignjena, ni gradnje ne namestitve; gradnja s tagom in namestitev po lastnikovi potrditvi.
 
 ## Odprta vprašanja za lastnika
 1. Jezik commit sporočil v javnem repozitoriju: `nacin-dela` pravi slovenščina, javni projekt je v
