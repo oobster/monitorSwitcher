@@ -78,22 +78,36 @@ final class SwitchModel: ObservableObject {
     func toggle() { run("toggle") }
     func switchTo(_ target: Target) { run(target.rawValue) }
 
+    /// Orders take-over retries and releases (laptops); see `TakeoverSequencer`.
+    private lazy var sequencer: TakeoverSequencer = {
+        let s = TakeoverSequencer()
+        s.isBusy = { [unowned self] in self.working }
+        s.mayClaim = { [unowned self] in self.isClient && self.autoTakeover && AutoTakeover.sharedConnected() }
+        s.run = { [unowned self] arg, done in self.run(arg, quiet: true, completion: done) }
+        return s
+    }()
+
     /// Laptop only: claim the monitor (HDMI 2). Retries while Wi-Fi comes back after wake.
-    func takeOver(attempt: Int = 1) {
+    func takeOver() {
         guard isClient, autoTakeover else { return }
-        if attempt == 1 { status = "Taking over the monitor …" }
-        run(Target.macbook.rawValue, quiet: true) { [weak self] ok in
-            guard !ok, attempt < 6 else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self?.takeOver(attempt: attempt + 1) }
-        }
+        status = "Taking over the monitor …"
+        sequencer.takeOver()
+    }
+
+    /// Laptop only: stop take-over retries that are still scheduled (shared monitor gone).
+    func cancelTakeover() {
+        guard isClient else { return }
+        sequencer.cancelTakeover()
     }
 
     /// Laptop only: give the monitor back to the server (cable unplugged / going to sleep).
+    /// Cancels take-over retries; if a switch is running, the release follows right after it.
     func release(completion: (() -> Void)? = nil) {
-        guard isClient, autoRelease else { completion?(); return }
+        guard isClient else { completion?(); return }
+        guard autoRelease else { sequencer.cancelTakeover(); completion?(); return }
         status = "Giving the monitor back to the server …"
         // "release": the server answers at once and switches in the background (~1 s).
-        run("release", quiet: true) { _ in completion?() }
+        sequencer.release { completion?() }
     }
 
     private func run(_ arg: String, quiet: Bool = false, completion: ((Bool) -> Void)? = nil) {
@@ -133,6 +147,7 @@ final class SwitchModel: ObservableObject {
                     self.status = t.shown
                 }
                 completion?(failure == nil)
+                self.sequencer.runFinished()   // a release queued meanwhile goes now
             }
         }
     }
@@ -146,6 +161,70 @@ final class SwitchModel: ObservableObject {
         launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 }
+
+// MARK: - Take-over / release order (laptops)
+
+// >>> TakeoverSequencer – Foundation only; scripts/test.sh extracts this block and simulates it.
+/// Take-over retries belong to one "generation". Unplugging, sleep or a release starts a new one, so a
+/// retry that is still scheduled can never claim a monitor that has been given back. A release that
+/// arrives while a switch is running is queued and runs right after it (instead of being dropped).
+final class TakeoverSequencer {
+    var isBusy: () -> Bool = { false }                       // a switch is running
+    var mayClaim: () -> Bool = { true }                      // auto take-over on + shared monitor attached
+    var run: (_ arg: String, _ done: @escaping (Bool) -> Void) -> Void = { _, done in done(false) }
+    var after: (_ seconds: Double, _ work: @escaping () -> Void) -> Void = { seconds, work in
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+    var maxAttempts = 6
+    var retryDelay = 4.0
+
+    private var generation = 0
+    private var releaseWaiters: [() -> Void] = []
+    private(set) var releaseQueued = false
+
+    func takeOver() {
+        generation += 1
+        // Plugged in again before a queued release ran: the newest intent wins.
+        if releaseQueued { releaseQueued = false; finish(takeWaiters()) }
+        attempt(1, generation)
+    }
+
+    func cancelTakeover() { generation += 1 }
+
+    func release(_ completion: @escaping () -> Void) {
+        generation += 1   // stop take-over retries
+        if isBusy() {
+            releaseQueued = true
+            releaseWaiters.append(completion)
+            return
+        }
+        run("release") { _ in completion() }
+    }
+
+    /// Call after every switch has finished (after its own completion).
+    func runFinished() {
+        guard releaseQueued, !isBusy() else { return }
+        releaseQueued = false
+        let waiters = takeWaiters()
+        run("release") { _ in waiters.forEach { $0() } }
+    }
+
+    private func attempt(_ n: Int, _ gen: Int) {
+        guard gen == generation, mayClaim() else { return }
+        run("macbook") { [weak self] ok in
+            guard let self, !ok, n < self.maxAttempts, gen == self.generation else { return }
+            self.after(self.retryDelay) { [weak self] in self?.attempt(n + 1, gen) }
+        }
+    }
+
+    private func takeWaiters() -> [() -> Void] {
+        defer { releaseWaiters = [] }
+        return releaseWaiters
+    }
+
+    private func finish(_ waiters: [() -> Void]) { waiters.forEach { $0() } }
+}
+// <<< TakeoverSequencer
 
 // MARK: - Auto take-over (laptops): shared monitor plugged in, or laptop woken with shared monitor attached
 
@@ -185,6 +264,7 @@ final class AutoTakeover {
         let connected = Self.sharedConnected()
         defer { wokeRecently = false }
         guard connected else {
+            SwitchModel.shared.cancelTakeover()   // no stale retry may claim a monitor that is gone
             if present { present = false; goneAt = Date(); scheduleRelease() }
             return
         }

@@ -5,6 +5,22 @@ All notable changes to Monitor Switcher. Versions follow [Semantic Versioning](h
 
 ## [Unreleased]
 
+### Security
+- `authorize-key.sh` accepts exactly one public key: text with a line break is refused, the line is
+  rebuilt from its fields and must parse as exactly one valid key (`ssh-keygen -l`) before it is added
+  with the forced command and `restrict`. Before, a second line could be added without restrictions.
+  A key that is already present without restrictions is left unchanged (same as the app).
+
+### Fixed
+- Laptops: take-over retries are cancelled when the shared monitor is unplugged, on sleep and on
+  release, and each retry checks that the monitor is still attached – a late retry can no longer
+  switch the monitor back to a laptop that is gone. A release that arrives while a switch is running
+  is queued and runs right after it instead of being dropped.
+
+### Added
+- `scripts/test.sh`: `authorize-key.sh` with throwaway keys in a temporary HOME, and a simulation of
+  the take-over / release order on a virtual clock (`scripts/takeover-sim.swift`).
+
 ## [3.2.0] – 2026-11-01
 
 ### Changed

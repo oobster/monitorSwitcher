@@ -1,6 +1,7 @@
 #!/bin/zsh
-# Quick tests, no windows and no real monitor (~30 s): script syntax, Swift type check, and the
-# switching logic of monitor-switch against a fake m1ddc in a temporary HOME.
+# Quick tests, no windows and no real monitor (~30 s): script syntax, Swift type check, the
+# switching logic of monitor-switch against a fake m1ddc in a temporary HOME, and authorize-key.sh
+# with throwaway keys in a temporary HOME.
 # Usage: scripts/test.sh
 set -uo pipefail
 cd -- "$(dirname "$0")/.."
@@ -100,6 +101,61 @@ new_case 17; /bin/rm "$HOME/.config/monitor-switch/config"
 ms client >/dev/null; rc=$?
 check 'not set up: clear error, nothing sent' '(( rc != 0 )) && [[ "$(calls)" == 0 ]] && /usr/bin/grep -q "setup.command" "$TMP/stderr"'
 export HOME="$real_home"
+
+# --- authorize-key.sh: throwaway keys, fake HOME (the real ~/.ssh is never touched) ----------
+echo '▶ authorize-key.sh (fake HOME)'
+/bin/mkdir -p "$TMP/keys"
+HOME="$TMP/keys" /usr/bin/ssh-keygen -q -t ed25519 -N '' -C laptop-a -f "$TMP/keys/a" </dev/null
+HOME="$TMP/keys" /usr/bin/ssh-keygen -q -t ed25519 -N '' -C laptop-b -f "$TMP/keys/b" </dev/null
+KA="$(<"$TMP/keys/a.pub")"; KB="$(<"$TMP/keys/b.pub")"
+ak_case() { AK_HOME="$TMP/ak$(( ++n ))"; /bin/mkdir -p "$AK_HOME"; AK="$AK_HOME/.ssh/authorized_keys"; }
+ak() { HOME="$AK_HOME" /bin/zsh "$ROOT/authorize-key.sh" "$@" >/dev/null 2>"$TMP/stderr"; }
+ak_lines() { [[ -f "$AK" ]] || { print 0; return 0; }; /usr/bin/wc -l < "$AK" | /usr/bin/tr -d ' '; }
+ak_unrestricted() {   # lines without the forced command + restrict prefix (grep -c prints 0 and exits 1)
+  [[ -f "$AK" ]] || { print 0; return 0; }
+  /usr/bin/grep -c -v '^command="[^"]*monitor-switch-ssh",restrict ssh-ed25519 ' "$AK"; return 0
+}
+
+ak_case; ak "$KA"; rc=$?
+check 'one key: added with forced command + restrict' '(( rc == 0 )) && [[ "$(ak_lines)" == 1 && "$(ak_unrestricted)" == 0 ]]'
+ak "$KA"; rc=$?
+check 'same key again: nothing added' '(( rc == 0 )) && [[ "$(ak_lines)" == 1 ]]'
+
+ak_case; ak "$KA"$'\n'"$KB"; rc=$?
+check 'two keys with a newline: refused, nothing written' '(( rc != 0 )) && [[ "$(ak_lines)" == 0 ]]'
+ak_case; ak "$KA"$'\r'"$KB"; rc=$?
+check 'two keys with a carriage return: refused, nothing written' '(( rc != 0 )) && [[ "$(ak_lines)" == 0 ]]'
+ak_case; ak "$KA"$'\n'; rc=$?
+check 'trailing newline: refused' '(( rc != 0 )) && [[ "$(ak_lines)" == 0 ]]'
+
+ak_case; ak "ssh-ed25519 ${${KA#ssh-ed25519 }[1,40]}xx not-a-key"; rc=$?
+check 'malformed key body: refused' '(( rc != 0 )) && [[ "$(ak_lines)" == 0 ]]'
+ak_case; ak "${KA% *} $KB"; rc=$?
+check 'second key glued on one line: never an unrestricted line' '(( rc != 0 )) || [[ "$(ak_unrestricted)" == 0 ]]'
+
+ak_case; /bin/mkdir -p "$AK_HOME/.ssh"; print -r -- "$KA" > "$AK"
+ak "$KA"; rc=$?
+check 'key already present without restrictions: left unchanged, error' '(( rc != 0 )) && [[ "$(ak_lines)" == 1 && "$(ak_unrestricted)" == 1 ]]'
+
+# --- Take-over / release order: the real TakeoverSequencer on a virtual clock ----------------
+echo '▶ take-over / release order (simulated, no SSH)'
+SIM="$TMP/sim"; /bin/mkdir -p "$SIM"
+{ print 'import Foundation'
+  /usr/bin/sed -n '/^\/\/ >>> TakeoverSequencer/,/^\/\/ <<< TakeoverSequencer/p' MonitorSwitcher.swift
+} > "$SIM/Sequencer.swift"
+/bin/cp scripts/takeover-sim.swift "$SIM/main.swift"
+if ! /usr/bin/grep -q '^final class TakeoverSequencer' "$SIM/Sequencer.swift"; then
+  bad 'TakeoverSequencer block not found in MonitorSwitcher.swift'
+elif ! /usr/bin/xcrun swiftc -o "$SIM/sim" "$SIM/Sequencer.swift" "$SIM/main.swift" 2>"$TMP/err"; then
+  bad "take-over simulation does not build: $(/usr/bin/head -5 "$TMP/err")"
+else
+  "$SIM/sim" > "$SIM/out" 2>"$SIM/log"
+  while read -r st name; do
+    [[ "$st" == PASS ]] && ok "$name" || bad "$name"
+  done < "$SIM/out"
+  [[ -s "$SIM/out" ]] || bad 'take-over simulation printed nothing'
+  [[ -s "$SIM/log" ]] && /usr/bin/sed 's/^/  /' "$SIM/log"
+fi
 
 echo
 echo "$pass passed, $fail failed"
