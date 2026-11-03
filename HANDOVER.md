@@ -61,8 +61,10 @@ Posledice: napake morajo biti jasno izpisane, prva namestitev laptopa še zahtev
 - Prva notarizacija tega računa je trajala ~41 min (19:02–19:43 UTC); naslednje so običajno hitrejše.
 - Popravki pregleda C1 (commit `3b367e4`, v CHANGELOG pod Unreleased): `authorize-key.sh` sprejme
   natanko en ključ v eni vrstici; laptop prekliče zakasnjene poskuse prevzema ob odklopu/spanju,
-  release med tekočim preklopom se izvede za njim (`TakeoverSequencer`). **Ciljni testi C1 zeleni
-  (38/0)**: `scripts/test.sh`, 2026-11-04. Neodvisna preverba (Codex) čaka.
+  release med tekočim preklopom se izvede za njim (`TakeoverSequencer`). Lastnikovi odločitvi
+  2026-11-04: en končni prelom vrstice (`\n`/`\r\n`) `authorize-key.sh` tiho odreže, vsak drug ostane
+  zavrnjen; preklic poskusov ob kratkem utripu zaslona ostane (`decisions/2026-11-04-*.md`).
+  **Ciljni testi zeleni (43/0)**: `scripts/test.sh`, 2026-11-04. Neodvisna preverba (Codex) čaka.
   Verzija ni dvignjena, ni gradnje ne namestitve; gradnja s tagom in namestitev po lastnikovi potrditvi.
 
 ## Odprta vprašanja za lastnika
@@ -71,6 +73,3 @@ Posledice: napake morajo biti jasno izpisane, prva namestitev laptopa še zahtev
 2. Prva namestitev laptopa brez Terminala (npr. notariziran `.pkg` ali app, ki se ob prvem zagonu
    namesti sam)?
 3. `m1ddc` je zdaj odvisen od Homebrewa; ga zapakirava v app (MIT licenca to dovoli)?
-4. C1 izbire: `authorize-key.sh` zavrne tudi argument s končnim prelomom vrstice (strogo »ena
-   vrstica«); poskusi prevzema se prekličejo tudi ob kratkem utripu zaslona (pomembno le, če
-   poskus med utripom spodleti). Ustreza?

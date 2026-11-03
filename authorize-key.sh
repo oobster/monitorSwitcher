@@ -4,7 +4,14 @@
 set -euo pipefail
 
 KEY="${1:-}"
-# Exactly one line: a second line would end up in authorized_keys without the restrictions below.
+# A single line break at the very end (\n or \r\n, e.g. from copy and paste) is dropped silently.
+if [[ "$KEY" == *$'\r\n' ]]; then
+  KEY="${KEY%$'\r\n'}"
+elif [[ "$KEY" == *$'\n' ]]; then
+  KEY="${KEY%$'\n'}"
+fi
+# Exactly one line: any other line break could put a second line into authorized_keys without
+# the restrictions below.
 if [[ "$KEY" == *$'\n'* || "$KEY" == *$'\r'* ]]; then
   echo 'Pass exactly one public key on a single line (the text contains a line break).' >&2
   exit 1

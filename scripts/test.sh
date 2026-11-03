@@ -125,8 +125,22 @@ ak_case; ak "$KA"$'\n'"$KB"; rc=$?
 check 'two keys with a newline: refused, nothing written' '(( rc != 0 )) && [[ "$(ak_lines)" == 0 ]]'
 ak_case; ak "$KA"$'\r'"$KB"; rc=$?
 check 'two keys with a carriage return: refused, nothing written' '(( rc != 0 )) && [[ "$(ak_lines)" == 0 ]]'
+ak_exact() {   # the only line is exactly the restricted form of $1
+  [[ -f "$AK" && "$(ak_lines)" == 1 ]] || return 1
+  [[ "$(<"$AK")" == "command=\"$AK_HOME/.local/bin/monitor-switch-ssh\",restrict $1" ]]
+}
 ak_case; ak "$KA"$'\n'; rc=$?
-check 'trailing newline: refused' '(( rc != 0 )) && [[ "$(ak_lines)" == 0 ]]'
+check 'one trailing newline: dropped, key added with forced command + restrict' '(( rc == 0 )) && ak_exact "$KA"'
+ak_case; ak "$KA"$'\r\n'; rc=$?
+check 'one trailing CRLF: dropped, key added with forced command + restrict' '(( rc == 0 )) && ak_exact "$KA"'
+ak_case; ak "$KA"$'\n\n'; rc=$?
+check 'two trailing newlines: refused, nothing written' '(( rc != 0 )) && [[ "$(ak_lines)" == 0 ]]'
+ak_case; ak "$KA"$'\r'; rc=$?
+check 'trailing bare carriage return: refused, nothing written' '(( rc != 0 )) && [[ "$(ak_lines)" == 0 ]]'
+ak_case; ak "${KA% *}"$'\n'" ${KA##* }"; rc=$?
+check 'newline inside one key: refused, nothing written' '(( rc != 0 )) && [[ "$(ak_lines)" == 0 ]]'
+ak_case; ak "$KA"$'\n'"$KB"$'\n'; rc=$?
+check 'two keys plus trailing newline: refused, nothing written' '(( rc != 0 )) && [[ "$(ak_lines)" == 0 ]]'
 
 ak_case; ak "ssh-ed25519 ${${KA#ssh-ed25519 }[1,40]}xx not-a-key"; rc=$?
 check 'malformed key body: refused' '(( rc != 0 )) && [[ "$(ak_lines)" == 0 ]]'
